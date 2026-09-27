@@ -30,8 +30,8 @@ if not GEMINI_API_KEY:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def chamar_gemini(prompt, json_mode=False):
-    """Tenta chamar os modelos disponíveis em sequência caso algum apresente erro 503 ou indisponibilidade."""
-    modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash']
+    """Tenta chamar os modelos estáveis oficiais em sequência para evitar indisponibilidades (503)."""
+    modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro']
     
     config = types.GenerateContentConfig(
         response_mime_type="application/json"
