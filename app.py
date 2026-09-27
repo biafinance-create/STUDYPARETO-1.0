@@ -30,8 +30,8 @@ if not GEMINI_API_KEY:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def chamar_gemini(prompt, json_mode=False):
-    """Tenta chamar os modelos estáveis oficiais em sequência para evitar indisponibilidades (503)."""
-    modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro']
+    """Tenta chamar os modelos ativos para a sua conta em sequência."""
+    modelos = ['gemini-3.8-flash', 'gemini-3.1-pro-preview']
     
     config = types.GenerateContentConfig(
         response_mime_type="application/json"
@@ -50,7 +50,7 @@ def chamar_gemini(prompt, json_mode=False):
             ultimo_erro = e
             continue
             
-    raise Exception(f"Servidores temporariamente ocupados. Detalhe: {ultimo_erro}")
+    raise Exception(f"Erro ao conectar aos modelos. Detalhe: {ultimo_erro}")
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
