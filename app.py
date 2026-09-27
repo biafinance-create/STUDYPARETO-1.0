@@ -32,7 +32,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 MODEL_NAME = 'gemini-3.8-flash' 
 
 def chamar_gemini(prompt, json_mode=False):
-    """Chama o modelo e tenta novamente de forma automática se o servidor estiver ocupado"""
+    """Chama o modelo e aguarda automaticamente se a cota gratuita for atingida (Erro 429) ou servidor ocupado (503)"""
     config = types.GenerateContentConfig(
         response_mime_type="application/json"
     ) if json_mode else None
@@ -48,7 +48,13 @@ def chamar_gemini(prompt, json_mode=False):
             return res.text
         except Exception as e:
             erro_str = str(e)
-            if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str or "RESOURCE_EXHAUSTED" in erro_str:
+            # Se for excesso de pedidos (429), espera 35 segundos automaticamente e tenta de novo
+            if "429" in erro_str or "RESOURCE_EXHAUSTED" in erro_str:
+                if i < tentativas - 1:
+                    time.sleep(35)
+                    continue
+            # Se for servidor ocupado (503), espera 4 segundos e tenta de novo
+            if "503" in erro_str or "UNAVAILABLE" in erro_str:
                 if i < tentativas - 1:
                     time.sleep(4)
                     continue
@@ -68,7 +74,7 @@ if 'respostas_usuario' not in st.session_state:
 if 'correcoes' not in st.session_state:
     st.session_state.correcoes = {}
 if 'meus_estudos' not in st.session_state:
-    st.session_state.meus_estudos = {}  # Dicionario para armazenar os estudos salvos
+    st.session_state.meus_estudos = {}
 
 # -----------------------------------------------------------------------------
 # INTERFACE COM ABAS
@@ -168,7 +174,7 @@ with tab2:
     else:
         if st.button("Gerar Resumo Estruturado") or st.session_state.resumo_estruturado:
             if not st.session_state.resumo_estruturado:
-                with st.spinner("O Gemini está analisando o material e criando o resumo estruturado..."):
+                with st.spinner("O Gemini está analisando o material e criando o resumo estruturado (aguarde se houver limite de cota)..."):
                     try:
                         prompt = f"""
                         Analise o texto abaixo de forma aprofundada e crie um resumo estruturado e completo.
@@ -210,7 +216,7 @@ with tab3:
             gerar_simulado_btn = st.button("🎯 Criar Novo Simulado")
 
         if gerar_simulado_btn:
-            with st.spinner("O Gemini está elaborando o simulado customizado..."):
+            with st.spinner("O Gemini está elaborando o simulado customizado (aguarde se houver limite de cota)..."):
                 prompt = f"""
                 Com base no material fornecido, crie um simulado de múltipla escolha com {num_questoes} questões.
                 Nível de Dificuldade: {dificuldade}.
@@ -346,7 +352,6 @@ with tab4:
             with sub_tab3:
                 st.subheader("Painel de Revisão Espaçada (SRS) & Pontuação")
                 
-                # Checkboxes de Revisão
                 revs = dados['revisoes']
                 st.write("Marque as revisões conforme for cumprindo o cronograma:")
                 
@@ -360,7 +365,6 @@ with tab4:
                 with c4:
                     revs['1m'] = st.checkbox("Revisão 1 Mês (25 pts)", value=revs['1m'], key=f"rev_1m_{estudo_selecionado}")
                 
-                # Cálculo da Pontuação de Evolução (0 a 100 pontos)
                 pontos = sum([25 for k, v in revs.items() if v])
                 
                 st.markdown("---")
