@@ -3,8 +3,7 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA E CHAVE DE API
@@ -15,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Recupera a chave da API do Gemini (Secrets do Streamlit Cloud ou Variável de Ambiente)
+# Recupera a chave da API do Gemini (Secrets do Streamlit Cloud ou campo de texto)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
@@ -26,9 +25,10 @@ if not GEMINI_API_KEY:
     st.info("Insira a chave da API do Gemini na barra lateral para ativar as funções do modelo.")
     st.stop()
 
-# Inicializa o cliente oficial da API do Gemini
-client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = 'gemini-1.5-flash'
+# Configura a biblioteca do Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
 # -----------------------------------------------------------------------------
@@ -80,8 +80,8 @@ with tab1:
                     text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
                     st.session_state.conteudo_estudo = text
                     st.success("Arquivo PDF extraído e carregado com sucesso!")
-                except ImportError:
-                    st.error("Para ler arquivos PDF, certifique-se de incluir 'pypdf' no arquivo requirements.txt.")
+                except Exception as e:
+                    st.error(f"Erro ao ler PDF: {e}")
 
     elif opcao_ingestao == "Texto Direto":
         texto_digitado = st.text_area(
@@ -98,13 +98,13 @@ with tab1:
         if st.button("Pesquisar e Gerar Material Completo"):
             if topico_pesquisa.strip():
                 with st.spinner("Pesquisando e gerando material com o Gemini..."):
-                    prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=prompt
-                    )
-                    st.session_state.conteudo_estudo = response.text
-                    st.success("Conteúdo gerado pelo Gemini e carregado!")
+                    try:
+                        prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
+                        response = model.generate_content(prompt)
+                        st.session_state.conteudo_estudo = response.text
+                        st.success("Conteúdo gerado pelo Gemini e carregado!")
+                    except Exception as e:
+                        st.error(f"Erro na comunicação com o Gemini: {e}")
             else:
                 st.warning("Insira um tema válido.")
 
@@ -125,25 +125,26 @@ with tab2:
         if st.button("Gerar Mapa de Conceitos (Pareto 80/20)") or st.session_state.mapa_pareto:
             if not st.session_state.mapa_pareto:
                 with st.spinner("O Gemini está identificando os conceitos chave de maior impacto..."):
-                    prompt = f"""
-                    Analise o texto abaixo e aplique o Princípio de Pareto (regra 80/20):
-                    1. Identifique os 20% de conceitos vitais que representam 80% da compreensão do assunto.
-                    2. Para cada conceito, estruture:
-                        - **Nome do Conceito**
-                        - **Grau de Impacto / Relevância**
-                        - **Resumo Detalhado e Explicativo**
-                        - **Aplicações Práticas ou Exemplos**
+                    try:
+                        prompt = f"""
+                        Analise o texto abaixo e aplique o Princípio de Pareto (regra 80/20):
+                        1. Identifique os 20% de conceitos vitais que representam 80% da compreensão do assunto.
+                        2. Para cada conceito, estruture:
+                            - **Nome do Conceito**
+                            - **Grau de Impacto / Relevância**
+                            - **Resumo Detalhado e Explicativo**
+                            - **Aplicações Práticas ou Exemplos**
 
-                    Texto base:
-                    {st.session_state.conteudo_estudo}
-                    """
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=prompt
-                    )
-                    st.session_state.mapa_pareto = response.text
+                        Texto base:
+                        {st.session_state.conteudo_estudo}
+                        """
+                        response = model.generate_content(prompt)
+                        st.session_state.mapa_pareto = response.text
+                    except Exception as e:
+                        st.error(f"Erro ao gerar o mapa: {e}")
             
-            st.markdown(st.session_state.mapa_pareto)
+            if st.session_state.mapa_pareto:
+                st.markdown(st.session_state.mapa_pareto)
 
 # =============================================================================
 # ABA 3: SIMULADO INTERATIVO, CORREÇÃO E REPETIÇÃO ESPAÇADA
@@ -172,7 +173,7 @@ with tab3:
                 Com base no material fornecido, crie um simulado de múltipla escolha com {num_questoes} questões.
                 Nível de Dificuldade: {dificuldade}.
 
-                Responda EXCLUSIVAMENTE em formato JSON válido, respeitando a seguinte estrutura:
+                Responda EXCLUSIVAMENTE em formato JSON puro (sem marcação de código markdown), respeitando a seguinte estrutura:
                 [
                     {{
                         "id": 1,
@@ -190,12 +191,9 @@ with tab3:
                 """
                 
                 try:
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
-                        )
+                    response = model.generate_content(
+                        prompt,
+                        generation_config={"response_mime_type": "application/json"}
                     )
                     st.session_state.simulado = json.loads(response.text)
                     st.session_state.respostas_usuario = {}
