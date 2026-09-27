@@ -28,7 +28,29 @@ if not GEMINI_API_KEY:
 
 # Inicializa o cliente oficial da nova SDK do Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = 'gemini-3.8-flash'
+
+def chamar_gemini(prompt, json_mode=False):
+    """Tenta chamar os modelos disponíveis em sequência caso algum apresente erro 503 ou indisponibilidade."""
+    modelos = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash']
+    
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json"
+    ) if json_mode else None
+
+    ultimo_erro = None
+    for m in modelos:
+        try:
+            res = client.models.generate_content(
+                model=m,
+                contents=prompt,
+                config=config
+            )
+            return res.text
+        except Exception as e:
+            ultimo_erro = e
+            continue
+            
+    raise Exception(f"Servidores temporariamente ocupados. Detalhe: {ultimo_erro}")
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
@@ -101,11 +123,8 @@ with tab1:
                 with st.spinner("Pesquisando e gerando material com o Gemini..."):
                     try:
                         prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
-                        response = client.models.generate_content(
-                            model=MODEL_NAME,
-                            contents=prompt
-                        )
-                        st.session_state.conteudo_estudo = response.text
+                        texto_gerado = chamar_gemini(prompt)
+                        st.session_state.conteudo_estudo = texto_gerado
                         st.success("Conteúdo gerado pelo Gemini e carregado!")
                     except Exception as e:
                         st.error(f"Erro na comunicação com o Gemini: {e}")
@@ -142,11 +161,8 @@ with tab2:
                         Texto base:
                         {st.session_state.conteudo_estudo}
                         """
-                        response = client.models.generate_content(
-                            model=MODEL_NAME,
-                            contents=prompt
-                        )
-                        st.session_state.mapa_pareto = response.text
+                        mapa_texto = chamar_gemini(prompt)
+                        st.session_state.mapa_pareto = mapa_texto
                     except Exception as e:
                         st.error(f"Erro ao gerar o mapa: {e}")
             
@@ -162,7 +178,6 @@ with tab3:
     if not st.session_state.conteudo_estudo:
         st.info("Insira o material de estudo na **Aba 1** antes de criar o simulado.")
     else:
-        # Configuração do Simulado
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
             num_questoes = st.slider("Número de Questões", min_value=10, max_value=50, value=10, step=5)
@@ -173,7 +188,6 @@ with tab3:
             st.write(" ")
             gerar_simulado_btn = st.button("🎯 Criar Novo Simulado")
 
-        # Geração de Questões Estruturadas em JSON
         if gerar_simulado_btn:
             with st.spinner("O Gemini está elaborando o simulado customizado..."):
                 prompt = f"""
@@ -198,21 +212,14 @@ with tab3:
                 """
                 
                 try:
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
-                        )
-                    )
-                    st.session_state.simulado = json.loads(response.text)
+                    json_str = chamar_gemini(prompt, json_mode=True)
+                    st.session_state.simulado = json.loads(json_str)
                     st.session_state.respostas_usuario = {}
                     st.session_state.correcoes = {}
                     st.success("Simulado gerado com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao estruturar o simulado JSON: {e}")
 
-        # Exibição do Simulado
         if st.session_state.simulado:
             st.markdown("---")
             total_q = len(st.session_state.simulado)
@@ -222,7 +229,6 @@ with tab3:
                 st.subheader(f"Questão {q_id} de {total_q} | Tópico: *{q['topico_relacionado']}*")
                 st.write(q["enunciado"])
                 
-                # Opções de Resposta
                 opcoes_formatadas = [f"{chave}) {valor}" for chave, valor in q["opcoes"].items()]
                 escolha = st.radio(
                     f"Selecione a resposta para a Q{q_id}:",
@@ -240,7 +246,6 @@ with tab3:
                         e_correta = (resposta_letra == q["resposta_correta"])
                         st.session_state.correcoes[q_id] = e_correta
                 
-                # Feedback Imediato da Questão
                 if q_id in st.session_state.correcoes:
                     correto = st.session_state.correcoes[q_id]
                     if correto:
@@ -252,7 +257,6 @@ with tab3:
                 
                 st.markdown("---")
 
-            # Finalização e Aderência / Repetição Espaçada
             if len(st.session_state.correcoes) == total_q:
                 total_acertos = sum(1 for v in st.session_state.correcoes.values() if v)
                 porcentagem = (total_acertos / total_q) * 100
@@ -260,7 +264,6 @@ with tab3:
                 st.header("📊 Resultado Geral e Cronograma de Repetição Espaçada")
                 st.metric(label="Aderência ao Conteúdo (Aproveitamento)", value=f"{porcentagem:.1f}%", delta=f"{total_acertos}/{total_q} acertos")
                 
-                # Classificação do Desempenho
                 if porcentagem >= 85:
                     nivel_aderencia = "Alta Aderência (Domínio Sólido)"
                 elif porcentagem >= 60:
@@ -270,7 +273,6 @@ with tab3:
                 
                 st.write(f"**Classificação:** {nivel_aderencia}")
                 
-                # Cálculo das Datas de Repetição Espaçada
                 hoje = datetime.now()
                 cronograma = [
                     {"Intervalo": "1 Dia", "Data Prevista": (hoje + timedelta(days=1)).strftime("%d/%m/%Y"), "Foco": "Reforço das lacunas e erros"},
