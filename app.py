@@ -28,7 +28,7 @@ if not GEMINI_API_KEY:
 
 # Inicializa o cliente oficial da nova SDK do Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = 'gemini-2.5-flash'
+MODEL_NAME = 'gemini-3.8-flash'
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
