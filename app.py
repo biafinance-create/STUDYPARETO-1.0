@@ -28,11 +28,8 @@ if not GEMINI_API_KEY:
 # Configura a biblioteca do Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Define o modelo atualizado
-try:
-    model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception:
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+# Define o modelo compatível com a sua chave
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
