@@ -27,7 +27,12 @@ if not GEMINI_API_KEY:
 
 # Configura a biblioteca do Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+# Define o modelo atualizado
+try:
+    model = genai.GenerativeModel('gemini-2.5-flash')
+except Exception:
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
@@ -173,7 +178,7 @@ with tab3:
                 Com base no material fornecido, crie um simulado de múltipla escolha com {num_questoes} questões.
                 Nível de Dificuldade: {dificuldade}.
 
-                Responda EXCLUSIVAMENTE em formato JSON puro (sem marcação de código markdown), respeitando a seguinte estrutura:
+                Responda EXCLUSIVAMENTE em formato JSON puro, respeitando a seguinte estrutura:
                 [
                     {{
                         "id": 1,
