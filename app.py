@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA E CHAVE DE API
@@ -14,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Recupera a chave da API do Gemini (Secrets do Streamlit Cloud ou campo de texto)
+# Recupera a chave da API do Gemini (Secrets do Streamlit Cloud)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
@@ -25,11 +26,9 @@ if not GEMINI_API_KEY:
     st.info("Insira a chave da API do Gemini na barra lateral para ativar as funções do modelo.")
     st.stop()
 
-# Configura a biblioteca do Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Define o modelo compatível com a sua chave
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Inicializa o cliente oficial da nova SDK do Gemini
+client = genai.Client(api_key=GEMINI_API_KEY)
+MODEL_NAME = 'gemini-2.5-flash'
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
@@ -102,7 +101,10 @@ with tab1:
                 with st.spinner("Pesquisando e gerando material com o Gemini..."):
                     try:
                         prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
-                        response = model.generate_content(prompt)
+                        response = client.models.generate_content(
+                            model=MODEL_NAME,
+                            contents=prompt
+                        )
                         st.session_state.conteudo_estudo = response.text
                         st.success("Conteúdo gerado pelo Gemini e carregado!")
                     except Exception as e:
@@ -140,7 +142,10 @@ with tab2:
                         Texto base:
                         {st.session_state.conteudo_estudo}
                         """
-                        response = model.generate_content(prompt)
+                        response = client.models.generate_content(
+                            model=MODEL_NAME,
+                            contents=prompt
+                        )
                         st.session_state.mapa_pareto = response.text
                     except Exception as e:
                         st.error(f"Erro ao gerar o mapa: {e}")
@@ -193,9 +198,12 @@ with tab3:
                 """
                 
                 try:
-                    response = model.generate_content(
-                        prompt,
-                        generation_config={"response_mime_type": "application/json"}
+                    response = client.models.generate_content(
+                        model=MODEL_NAME,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
                     )
                     st.session_state.simulado = json.loads(response.text)
                     st.session_state.respostas_usuario = {}
