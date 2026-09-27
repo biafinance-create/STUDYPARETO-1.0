@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA E CHAVE DE API
@@ -25,31 +26,25 @@ if not GEMINI_API_KEY:
     st.info("Insira a chave da API do Gemini na barra lateral para ativar as funções do modelo.")
     st.stop()
 
-# Configura a chave de API no SDK do Gemini
-genai.configure(api_key=GEMINI_API_KEY)
+# Inicializa o cliente oficial da nova SDK da Google
+client = genai.Client(api_key=GEMINI_API_KEY)
+MODEL_NAME = 'gemini-2.5-flash'
 
 def chamar_gemini(prompt, json_mode=False):
-    """
-    Testa automaticamente os aliases de modelos Flash que possuem altíssima 
-    cota gratuita no Google AI Studio, evitando erros 429 de Resource Exhausted.
-    """
-    modelos_flash = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.0-pro']
-    
-    gen_config = {}
-    if json_mode:
-        gen_config["response_mime_type"] = "application/json"
+    """Realiza a chamada direta para o modelo gemini-2.5-flash com tratamento de exceções."""
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json"
+    ) if json_mode else None
 
-    ultimo_erro = None
-    for m_nome in modelos_flash:
-        try:
-            m = genai.GenerativeModel(m_nome)
-            res = m.generate_content(prompt, generation_config=gen_config)
-            return res.text
-        except Exception as e:
-            ultimo_erro = e
-            continue
-            
-    raise Exception(f"Erro ao conectar com a API do Gemini. Detalhe: {ultimo_erro}")
+    try:
+        res = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=config
+        )
+        return res.text
+    except Exception as e:
+        raise Exception(f"Erro ao conectar com o Gemini ({MODEL_NAME}): {e}")
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
