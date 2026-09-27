@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
@@ -19,32 +20,43 @@ st.set_page_config(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
-    st.sidebar.warning("⚠️ Insira sua chave da API do Gemini abaixo para continuar:")
+    st.sidebar.warning("⚠️ Insira a sua chave da API do Gemini abaixo para continuar:")
     GEMINI_API_KEY = st.sidebar.text_input("Gemini API Key", type="password")
 
 if not GEMINI_API_KEY:
     st.info("Insira a chave da API do Gemini na barra lateral para ativar as funções do modelo.")
     st.stop()
 
-# Inicializa o cliente oficial da nova SDK da Google
+# Inicializa o cliente oficial da nova SDK do Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_NAME = 'gemini-2.5-flash'
+
+# MODELO EXIGIDO PELA GOOGLE PARA A SUA CONTA
+MODEL_NAME = 'gemini-3.8-flash' 
 
 def chamar_gemini(prompt, json_mode=False):
-    """Realiza a chamada direta para o modelo gemini-2.5-flash com tratamento de exceções."""
+    """Chama o modelo e tenta novamente de forma automática se o servidor estiver ocupado"""
     config = types.GenerateContentConfig(
         response_mime_type="application/json"
     ) if json_mode else None
 
-    try:
-        res = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=config
-        )
-        return res.text
-    except Exception as e:
-        raise Exception(f"Erro ao conectar com o Gemini ({MODEL_NAME}): {e}")
+    tentativas = 3
+    for i in range(tentativas):
+        try:
+            res = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=config
+            )
+            return res.text
+        except Exception as e:
+            erro_str = str(e)
+            # Se for erro de servidor ocupado (503) ou excesso de pedidos (429), espera 4 segundos e tenta de novo
+            if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str or "RESOURCE_EXHAUSTED" in erro_str:
+                if i < tentativas - 1:
+                    time.sleep(4)
+                    continue
+            # Se for outro erro, ou acabarem as tentativas, avisa o utilizador
+            raise Exception(f"Erro na comunicação com o modelo {MODEL_NAME}. Detalhe: {e}")
 
 # -----------------------------------------------------------------------------
 # GESTÃO DO ESTADO DA SESSÃO (SESSION STATE)
@@ -64,6 +76,7 @@ if 'correcoes' not in st.session_state:
 # INTERFACE COM ABAS
 # -----------------------------------------------------------------------------
 st.title("📚 Central Inteligente de Aprendizado & Simulados")
+st.caption("Versão atualizada: Gemini 3.8 Flash Ativo")
 
 tab1, tab2, tab3 = st.tabs([
     "📥 1. Ingestão de Conteúdo",
@@ -84,19 +97,19 @@ with tab1:
     )
     
     if opcao_ingestao == "Upload de Arquivo (PDF / TXT)":
-        uploaded_file = st.file_uploader("Envie seu arquivo de estudo", type=["txt", "pdf"])
+        uploaded_file = st.file_uploader("Envie o seu ficheiro de estudo", type=["txt", "pdf"])
         if uploaded_file is not None:
             if uploaded_file.type == "text/plain":
                 text = uploaded_file.read().decode("utf-8")
                 st.session_state.conteudo_estudo = text
-                st.success("Arquivo TXT carregado com sucesso!")
+                st.success("Ficheiro TXT carregado com sucesso!")
             elif uploaded_file.type == "application/pdf":
                 try:
                     import pypdf
                     reader = pypdf.PdfReader(uploaded_file)
                     text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
                     st.session_state.conteudo_estudo = text
-                    st.success("Arquivo PDF extraído e carregado com sucesso!")
+                    st.success("Ficheiro PDF extraído e carregado com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao ler PDF: {e}")
 
@@ -106,15 +119,15 @@ with tab1:
             value=st.session_state.conteudo_estudo,
             height=300
         )
-        if st.button("Salvar Texto"):
+        if st.button("Guardar Texto"):
             st.session_state.conteudo_estudo = texto_digitado
-            st.success("Conteúdo salvo com sucesso!")
+            st.success("Conteúdo guardado com sucesso!")
 
     elif opcao_ingestao == "Pesquisa / Geração com Gemini":
         topico_pesquisa = st.text_input("Digite o tema ou assunto que deseja estudar:")
         if st.button("Pesquisar e Gerar Material Completo"):
             if topico_pesquisa.strip():
-                with st.spinner("Pesquisando e gerando material com o Gemini..."):
+                with st.spinner("A pesquisar e a gerar material com o Gemini..."):
                     try:
                         prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
                         texto_gerado = chamar_gemini(prompt)
@@ -127,7 +140,7 @@ with tab1:
 
     if st.session_state.conteudo_estudo:
         st.markdown("---")
-        st.subheader("Preview do Conteúdo Carregado")
+        st.subheader("Pré-visualização do Conteúdo Carregado")
         st.text_area("Texto ativo:", value=st.session_state.conteudo_estudo[:1500] + "...", height=150, disabled=True)
 
 # =============================================================================
@@ -141,7 +154,7 @@ with tab2:
     else:
         if st.button("Gerar Mapa de Conceitos (Pareto 80/20)") or st.session_state.mapa_pareto:
             if not st.session_state.mapa_pareto:
-                with st.spinner("O Gemini está identificando os conceitos chave de maior impacto..."):
+                with st.spinner("O Gemini está a identificar os conceitos chave de maior impacto..."):
                     try:
                         prompt = f"""
                         Analise o texto abaixo e aplique o Princípio de Pareto (regra 80/20):
@@ -183,7 +196,7 @@ with tab3:
             gerar_simulado_btn = st.button("🎯 Criar Novo Simulado")
 
         if gerar_simulado_btn:
-            with st.spinner("O Gemini está elaborando o simulado customizado..."):
+            with st.spinner("O Gemini está a elaborar o simulado personalizado..."):
                 prompt = f"""
                 Com base no material fornecido, crie um simulado de múltipla escolha com {num_questoes} questões.
                 Nível de Dificuldade: {dificuldade}.
@@ -246,7 +259,7 @@ with tab3:
                         st.success(f"✅ **Correto!** {q['explicacao']}")
                     else:
                         st.error(f"❌ **Incorreto!** A resposta correta é a letra **{q['resposta_correta']}**.")
-                        st.warning(f"📌 **Lacuna de Aprendizado Detectada:** {q['lacuna_conceitual']}")
+                        st.warning(f"📌 **Lacuna de Aprendizado Detetada:** {q['lacuna_conceitual']}")
                         st.info(f"💡 **Explicação:** {q['explicacao']}")
                 
                 st.markdown("---")
@@ -270,11 +283,11 @@ with tab3:
                 hoje = datetime.now()
                 cronograma = [
                     {"Intervalo": "1 Dia", "Data Prevista": (hoje + timedelta(days=1)).strftime("%d/%m/%Y"), "Foco": "Reforço das lacunas e erros"},
-                    {"Intervalo": "1 Semana", "Data Prevista": (hoje + timedelta(weeks=1)).strftime("%d/%m/%Y"), "Foco": "Consolidação de memória de curto prazo"},
+                    {"Intervalo": "1 Semana", "Data Prevista": (hoje + timedelta(weeks=1)).strftime("%d/%m/%Y"), "Foco": "Consolidação de memória a curto prazo"},
                     {"Intervalo": "15 Dias", "Data Prevista": (hoje + timedelta(days=15)).strftime("%d/%m/%Y"), "Foco": "Fixação de conceitos Pareto"},
                     {"Intervalo": "1 Mês", "Data Prevista": (hoje + timedelta(days=30)).strftime("%d/%m/%Y"), "Foco": "Revisão geral e manutenção"}
                 ]
                 
                 df_cronograma = pd.DataFrame(cronograma)
-                st.subheader("📅 Seu Cronograma Automático de Revisão Espaçada (SRS)")
+                st.subheader("📅 O seu Cronograma Automático de Revisão Espaçada (SRS)")
                 st.table(df_cronograma)
