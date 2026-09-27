@@ -20,7 +20,7 @@ st.set_page_config(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
-    st.sidebar.warning("⚠️ Insira a sua chave da API do Gemini abaixo para continuar:")
+    st.sidebar.warning("⚠️ Insira sua chave da API do Gemini abaixo para continuar:")
     GEMINI_API_KEY = st.sidebar.text_input("Gemini API Key", type="password")
 
 if not GEMINI_API_KEY:
@@ -29,8 +29,6 @@ if not GEMINI_API_KEY:
 
 # Inicializa o cliente oficial da nova SDK do Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
-
-# MODELO EXIGIDO PELA GOOGLE PARA A SUA CONTA
 MODEL_NAME = 'gemini-3.8-flash' 
 
 def chamar_gemini(prompt, json_mode=False):
@@ -50,12 +48,10 @@ def chamar_gemini(prompt, json_mode=False):
             return res.text
         except Exception as e:
             erro_str = str(e)
-            # Se for erro de servidor ocupado (503) ou excesso de pedidos (429), espera 4 segundos e tenta de novo
             if "503" in erro_str or "UNAVAILABLE" in erro_str or "429" in erro_str or "RESOURCE_EXHAUSTED" in erro_str:
                 if i < tentativas - 1:
                     time.sleep(4)
                     continue
-            # Se for outro erro, ou acabarem as tentativas, avisa o utilizador
             raise Exception(f"Erro na comunicação com o modelo {MODEL_NAME}. Detalhe: {e}")
 
 # -----------------------------------------------------------------------------
@@ -63,25 +59,28 @@ def chamar_gemini(prompt, json_mode=False):
 # -----------------------------------------------------------------------------
 if 'conteudo_estudo' not in st.session_state:
     st.session_state.conteudo_estudo = ""
-if 'mapa_pareto' not in st.session_state:
-    st.session_state.mapa_pareto = None
+if 'resumo_estruturado' not in st.session_state:
+    st.session_state.resumo_estruturado = None
 if 'simulado' not in st.session_state:
     st.session_state.simulado = []
 if 'respostas_usuario' not in st.session_state:
     st.session_state.respostas_usuario = {}
 if 'correcoes' not in st.session_state:
     st.session_state.correcoes = {}
+if 'meus_estudos' not in st.session_state:
+    st.session_state.meus_estudos = {}  # Dicionario para armazenar os estudos salvos
 
 # -----------------------------------------------------------------------------
 # INTERFACE COM ABAS
 # -----------------------------------------------------------------------------
 st.title("📚 Central Inteligente de Aprendizado & Simulados")
-st.caption("Versão atualizada: Gemini 3.8 Flash Ativo")
+st.caption("Versão atualizada: Gestão de Matérias & SRS Ativo")
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📥 1. Ingestão de Conteúdo",
-    "📊 2. Mapa Pareto & Resumos",
-    "📝 3. Simulado & Repetição Espaçada"
+    "📑 2. Resumo Estruturado",
+    "📝 3. Simulado & Repetição Espaçada",
+    "📂 4. Meus Estudos Salvos"
 ])
 
 # =============================================================================
@@ -97,19 +96,19 @@ with tab1:
     )
     
     if opcao_ingestao == "Upload de Arquivo (PDF / TXT)":
-        uploaded_file = st.file_uploader("Envie o seu ficheiro de estudo", type=["txt", "pdf"])
+        uploaded_file = st.file_uploader("Envie seu arquivo de estudo", type=["txt", "pdf"])
         if uploaded_file is not None:
             if uploaded_file.type == "text/plain":
                 text = uploaded_file.read().decode("utf-8")
                 st.session_state.conteudo_estudo = text
-                st.success("Ficheiro TXT carregado com sucesso!")
+                st.success("Arquivo TXT carregado com sucesso!")
             elif uploaded_file.type == "application/pdf":
                 try:
                     import pypdf
                     reader = pypdf.PdfReader(uploaded_file)
                     text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
                     st.session_state.conteudo_estudo = text
-                    st.success("Ficheiro PDF extraído e carregado com sucesso!")
+                    st.success("Arquivo PDF extraído e carregado com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao ler PDF: {e}")
 
@@ -119,15 +118,15 @@ with tab1:
             value=st.session_state.conteudo_estudo,
             height=300
         )
-        if st.button("Guardar Texto"):
+        if st.button("Salvar Texto"):
             st.session_state.conteudo_estudo = texto_digitado
-            st.success("Conteúdo guardado com sucesso!")
+            st.success("Conteúdo salvo com sucesso!")
 
     elif opcao_ingestao == "Pesquisa / Geração com Gemini":
         topico_pesquisa = st.text_input("Digite o tema ou assunto que deseja estudar:")
         if st.button("Pesquisar e Gerar Material Completo"):
             if topico_pesquisa.strip():
-                with st.spinner("A pesquisar e a gerar material com o Gemini..."):
+                with st.spinner("Pesquisando e gerando material com o Gemini..."):
                     try:
                         prompt = f"Gere um material didático, estruturado e aprofundado sobre o seguinte tópico: {topico_pesquisa}."
                         texto_gerado = chamar_gemini(prompt)
@@ -140,41 +139,56 @@ with tab1:
 
     if st.session_state.conteudo_estudo:
         st.markdown("---")
-        st.subheader("Pré-visualização do Conteúdo Carregado")
+        st.subheader("Preview do Conteúdo Carregado")
         st.text_area("Texto ativo:", value=st.session_state.conteudo_estudo[:1500] + "...", height=150, disabled=True)
+        
+        st.markdown("### 💾 Salvar este Estudo na sua Biblioteca")
+        nome_estudo_input = st.text_input("Nome do Estudo / Matéria (ex: Macroeconomia - Cap 1):")
+        if st.button("Salvar Estudo na Aba 4"):
+            if nome_estudo_input.strip():
+                st.session_state.meus_estudos[nome_estudo_input] = {
+                    "conteudo": st.session_state.conteudo_estudo,
+                    "resumo": st.session_state.resumo_estruturado,
+                    "simulado": st.session_state.simulado,
+                    "criacao": datetime.now().strftime("%d/%m/%Y"),
+                    "revisoes": {"1d": False, "1s": False, "15d": False, "1m": False}
+                }
+                st.success(f"Estudo '{nome_estudo_input}' salvo com sucesso! Vá para a Aba 4 para gerenciar.")
+            else:
+                st.warning("Por favor, insira um nome válido para o estudo.")
 
 # =============================================================================
-# ABA 2: MAPA DE CONCEITOS (PARETO) E RESUMO DETALHADO
+# ABA 2: RESUMO ESTRUTURADO
 # =============================================================================
 with tab2:
-    st.header("Análise Estratégica pelo Princípio de Pareto (80/20)")
+    st.header("Resumo Estruturado e Completo do Material")
     
     if not st.session_state.conteudo_estudo:
-        st.info("Por favor, adicione algum material de estudo na **Aba 1** para gerar o mapa de conceitos.")
+        st.info("Por favor, adicione algum material de estudo na **Aba 1** para gerar o resumo.")
     else:
-        if st.button("Gerar Mapa de Conceitos (Pareto 80/20)") or st.session_state.mapa_pareto:
-            if not st.session_state.mapa_pareto:
-                with st.spinner("O Gemini está a identificar os conceitos chave de maior impacto..."):
+        if st.button("Gerar Resumo Estruturado") or st.session_state.resumo_estruturado:
+            if not st.session_state.resumo_estruturado:
+                with st.spinner("O Gemini está analisando o material e criando o resumo estruturado..."):
                     try:
                         prompt = f"""
-                        Analise o texto abaixo e aplique o Princípio de Pareto (regra 80/20):
-                        1. Identifique os 20% de conceitos vitais que representam 80% da compreensão do assunto.
-                        2. Para cada conceito, estruture:
-                            - **Nome do Conceito**
-                            - **Grau de Impacto / Relevância**
-                            - **Resumo Detalhado e Explicativo**
-                            - **Aplicações Práticas ou Exemplos**
+                        Analise o texto abaixo de forma aprofundada e crie um resumo estruturado e completo.
+                        Organize o resumo, obrigatoriamente, nos seguintes tópicos:
+                        
+                        1. **Visão Geral:** Um parágrafo introdutório sobre o tema central.
+                        2. **Principais Tópicos:** Os pontos mais importantes detalhados de forma lógica (utilize bullet points).
+                        3. **Conceitos Chave:** Definições claras dos termos fundamentais abordados.
+                        4. **Conclusão / Aplicação Prática:** Uma síntese do material e como esse conhecimento é aplicado.
 
                         Texto base:
                         {st.session_state.conteudo_estudo}
                         """
-                        mapa_texto = chamar_gemini(prompt)
-                        st.session_state.mapa_pareto = mapa_texto
+                        resumo_texto = chamar_gemini(prompt)
+                        st.session_state.resumo_estruturado = resumo_texto
                     except Exception as e:
-                        st.error(f"Erro ao gerar o mapa: {e}")
+                        st.error(f"Erro ao gerar o resumo: {e}")
             
-            if st.session_state.mapa_pareto:
-                st.markdown(st.session_state.mapa_pareto)
+            if st.session_state.resumo_estruturado:
+                st.markdown(st.session_state.resumo_estruturado)
 
 # =============================================================================
 # ABA 3: SIMULADO INTERATIVO, CORREÇÃO E REPETIÇÃO ESPAÇADA
@@ -196,7 +210,7 @@ with tab3:
             gerar_simulado_btn = st.button("🎯 Criar Novo Simulado")
 
         if gerar_simulado_btn:
-            with st.spinner("O Gemini está a elaborar o simulado personalizado..."):
+            with st.spinner("O Gemini está elaborando o simulado customizado..."):
                 prompt = f"""
                 Com base no material fornecido, crie um simulado de múltipla escolha com {num_questoes} questões.
                 Nível de Dificuldade: {dificuldade}.
@@ -259,7 +273,7 @@ with tab3:
                         st.success(f"✅ **Correto!** {q['explicacao']}")
                     else:
                         st.error(f"❌ **Incorreto!** A resposta correta é a letra **{q['resposta_correta']}**.")
-                        st.warning(f"📌 **Lacuna de Aprendizado Detetada:** {q['lacuna_conceitual']}")
+                        st.warning(f"📌 **Lacuna de Aprendizado Detectada:** {q['lacuna_conceitual']}")
                         st.info(f"💡 **Explicação:** {q['explicacao']}")
                 
                 st.markdown("---")
@@ -283,11 +297,79 @@ with tab3:
                 hoje = datetime.now()
                 cronograma = [
                     {"Intervalo": "1 Dia", "Data Prevista": (hoje + timedelta(days=1)).strftime("%d/%m/%Y"), "Foco": "Reforço das lacunas e erros"},
-                    {"Intervalo": "1 Semana", "Data Prevista": (hoje + timedelta(weeks=1)).strftime("%d/%m/%Y"), "Foco": "Consolidação de memória a curto prazo"},
-                    {"Intervalo": "15 Dias", "Data Prevista": (hoje + timedelta(days=15)).strftime("%d/%m/%Y"), "Foco": "Fixação de conceitos Pareto"},
+                    {"Intervalo": "1 Semana", "Data Prevista": (hoje + timedelta(weeks=1)).strftime("%d/%m/%Y"), "Foco": "Consolidação de memória de curto prazo"},
+                    {"Intervalo": "15 Dias", "Data Prevista": (hoje + timedelta(days=15)).strftime("%d/%m/%Y"), "Foco": "Fixação de conceitos fundamentais"},
                     {"Intervalo": "1 Mês", "Data Prevista": (hoje + timedelta(days=30)).strftime("%d/%m/%Y"), "Foco": "Revisão geral e manutenção"}
                 ]
                 
                 df_cronograma = pd.DataFrame(cronograma)
-                st.subheader("📅 O seu Cronograma Automático de Revisão Espaçada (SRS)")
+                st.subheader("📅 Seu Cronograma Automático de Revisão Espaçada (SRS)")
                 st.table(df_cronograma)
+
+# =============================================================================
+# ABA 4: MEUS ESTUDOS SALVOS & REVISÃO ESPAÇADA PERSONALIZADA
+# =============================================================================
+with tab4:
+    st.header("📂 Meus Estudos Salvos & Acompanhamento de Evolução")
+    
+    if not st.session_state.meus_estudos:
+        st.info("Nenhum estudo salvo ainda. Carregue um material na **Aba 1**, gere o conteúdo e clique em 'Salvar Estudo na Aba 4'.")
+    else:
+        estudo_selecionado = st.selectbox("Selecione o Estudo para Revisar:", list(st.session_state.meus_estudos.keys()))
+        
+        if estudo_selecionado:
+            dados = st.session_state.meus_estudos[estudo_selecionado]
+            st.markdown(f"### Matéria: **{estudo_selecionado}** *(Criado em: {dados['criacao']})*")
+            
+            sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📑 Ver Resumo", "📝 Ver Simulado", "🔄 Revisão Espaçada & Evolução"])
+            
+            with sub_tab1:
+                st.subheader("Resumo Estruturado do Estudo")
+                if dados['resumo']:
+                    st.markdown(dados['resumo'])
+                else:
+                    st.warning("Nenhum resumo gerado para este estudo. Gere o resumo na Aba 2 antes de salvar.")
+            
+            with sub_tab2:
+                st.subheader("Simulado Salvo")
+                if dados['simulado']:
+                    st.success(f"Este estudo possui um simulado de {len(dados['simulado'])} questões estruturadas.")
+                    for q in dados['simulado']:
+                        st.markdown(f"**Q{q['id']}:** {q['enunciado']}")
+                        for letra, opt in q['opcoes'].items():
+                            st.text(f"  {letra}) {opt}")
+                        st.info(f"Resposta Correta: **{q['resposta_correta']}** - {q['explicacao']}")
+                        st.markdown("---")
+                else:
+                    st.warning("Nenhum simulado gerado para este estudo.")
+            
+            with sub_tab3:
+                st.subheader("Painel de Revisão Espaçada (SRS) & Pontuação")
+                
+                # Checkboxes de Revisão
+                revs = dados['revisoes']
+                st.write("Marque as revisões conforme for cumprindo o cronograma:")
+                
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    revs['1d'] = st.checkbox("Revisão 1 Dia (25 pts)", value=revs['1d'], key=f"rev_1d_{estudo_selecionado}")
+                with c2:
+                    revs['1s'] = st.checkbox("Revisão 1 Semana (25 pts)", value=revs['1s'], key=f"rev_1s_{estudo_selecionado}")
+                with c3:
+                    revs['15d'] = st.checkbox("Revisão 15 Dias (25 pts)", value=revs['15d'], key=f"rev_15d_{estudo_selecionado}")
+                with c4:
+                    revs['1m'] = st.checkbox("Revisão 1 Mês (25 pts)", value=revs['1m'], key=f"rev_1m_{estudo_selecionado}")
+                
+                # Cálculo da Pontuação de Evolução (0 a 100 pontos)
+                pontos = sum([25 for k, v in revs.items() if v])
+                
+                st.markdown("---")
+                st.metric(label="🏆 Pontuação de Evolução neste Estudo", value=f"{pontos} / 100 pts", delta=f"{pontos}% concluído")
+                
+                if pontos == 100:
+                    st.balloons()
+                    st.success("🎉 Parabéns! Você concluiu 100% das revisões espaçadas para este estudo. Domínio sólido garantido!")
+                elif pontos >= 50:
+                    st.info("📈 Bom trabalho! Continue firme no cronograma de consolidação de longo prazo.")
+                else:
+                    st.warning("⚠️ Atenção: Mantenha as revisões em dia para garantir a retenção na memória de longo prazo.")
